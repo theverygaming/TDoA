@@ -43,7 +43,6 @@ def read_kiwiwav(f):
         raise Exception("expected 2 channels")
     if bits != 16:
         raise Exception("expected 16-bit samples")
-    print(sr)
 
     chunks_raw = []
     ridx = 36
@@ -62,19 +61,66 @@ def read_kiwiwav(f):
             "data": (np.frombuffer(cdata2["data"], dtype="<i2").astype(np.float32) / 32768).view(np.complex64),
         })
 
-    sr_corrected = float(sr)
-    CORR_FACTOR = 0.1
+    chunk_len = len(chunks_raw[0]["data"])
+    if len(set(len(x["data"]) for x in chunks_raw)) != 1:
+        raise Exception("unsupported: chunks have different lengths")
+
+    dt_ns_chunks = [] 
     gpsns_prev = 0
-    for chunk in chunks_raw:
+    for i, chunk in enumerate(chunks_raw):
+        if i == 0 and chunk["gpsns"] != 0:
+            raise Exception("first chunk has nonzero timestamp")
+        if chunk["gpsns"] == 0 and i != 0:
+            raise Exception("zero timestamp after start")
         if gpsns_prev > 0:
-            prev_chunk_sr = len(chunk["data"]) / ((chunk["gpsns"] - gpsns_prev) * 1e-9)
-            sr_corrected = ((1 - CORR_FACTOR) * sr_corrected) + (CORR_FACTOR * prev_chunk_sr)
+            if chunk["gpsns"] < gpsns_prev:
+                raise Exception("clock went backwards or didn't run")
+            dt_ns = chunk["gpsns"] - gpsns_prev
+            dt_ns_chunks.append(dt_ns)
         gpsns_prev = chunk["gpsns"]
+    if len(dt_ns_chunks) == 0:
+        raise Exception("no usable timestamps")
+    if len(dt_ns_chunks) + 2 != len(chunks_raw):
+        raise Exception("dt_ns_chunks length doesn't fit together with chunks_raw length")
+    dt_ns_median = np.median(dt_ns_chunks)
+    sr_measured = chunk_len / (dt_ns_median * 1e-9)
+    sr_ppm = ((sr_measured - sr) / sr) * 1e6
 
-    print(f"SR: {sr} SR corrected: {sr_corrected}")
+    # guessed timestamp for first chunk
+    chunks_raw[0]["gpsns"] = chunks_raw[1]["gpsns"] - dt_ns_median
 
-# FIXME:
-import sys
+    # add length of chunk to each chunk where possible, estimate for others (first & last)
+    for i, chunk in enumerate(chunks_raw):
+        if i < 1:
+            chunk["duration_ns"] = dt_ns_median
+        elif i == len(chunks_raw) - 1:
+            chunk["duration_ns"] = dt_ns_median
+        else:
+            chunk["duration_ns"] = dt_ns_chunks[i - 1]
 
-with open(sys.argv[1], "rb") as f:
-    read_kiwiwav(f)
+    # timing sanity check
+    for i, chunk in enumerate(chunks_raw):
+        if i == len(chunks_raw) - 1:
+            break
+        dt = chunks_raw[i+1]["gpsns"] - (chunk["gpsns"] + chunk["duration_ns"])
+        if dt != 0:
+            raise Exception(f"chunks {i} and {i+1} are spaced weirdly")
+
+    # compute timestamps for each sample
+    for chunk in chunks_raw:
+        samp_dt_ns = chunk["duration_ns"] / len(chunk["data"])
+        chunk["timestamps"] = chunk["gpsns"] + (np.arange(chunk_len, dtype=np.int64) * samp_dt_ns)
+
+    samples_all = np.concatenate([x["data"] for x in chunks_raw])
+    timestamps_all = np.concatenate([x["timestamps"] for x in chunks_raw])
+
+    # last sanity check
+    if len(samples_all) != len(timestamps_all):
+        raise Exception("len(samples_all) != len(timestamps_all)")
+
+    return {
+        "samples": samples_all,
+        "timestamps": timestamps_all,
+        "sr": sr_measured,
+        "sr_ppm": sr_ppm,
+    }
