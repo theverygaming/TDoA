@@ -1,5 +1,7 @@
 import struct
 import numpy as np
+from tdoa import TDoARecording
+
 
 def _read_chunk(data):
     ctype = data[0:4]
@@ -118,9 +120,8 @@ def read_kiwiwav(f):
     if len(samples_all) != len(timestamps_all):
         raise Exception("len(samples_all) != len(timestamps_all)")
 
-    return {
-        "samples": samples_all,
-        "timestamps": timestamps_all,
-        "sr": sr_measured,
-        "sr_ppm": sr_ppm,
-    }
+    return TDoARecording(
+        samples_all,
+        timestamps_all,
+        sr_measured,
+    )
