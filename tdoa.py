@@ -22,7 +22,6 @@ class TDoARecording:
 
         Operates on references of the recordings!
         """
-        # TODO: throw some errors when a recording is completely out of line and there are no overlaps? Or are we doing that already maybe?
 
         # ensure all recs start at around the same time
         latest_start = max(rec.timestamps[0] for rec in recs)
@@ -60,27 +59,30 @@ class TDoAPositionedRecording(TDoARecording):
 
 
 class TDoAAlgorithm:
-    # FIXME: function naming, docstrings?
+    # TODO: docstrings?
 
-    def get_dist_probability_fn(self, r1: TDoARecording, r2: TDoARecording):
+    def get_dist_score_fn(self, r1: TDoARecording, r2: TDoARecording):
         raise NotImplementedError()
 
-    def probability_to_intensity(self, prob: npt.NDArray[np.float32]):
+    def score_to_intensity(self, score: npt.NDArray[np.float32]):
         raise NotImplementedError()
 
 
 class TDoAAlgorithmSimple(TDoAAlgorithm):
-    def get_dist_probability_fn(self, r1: TDoARecording, r2: TDoARecording):
-        lag_time, sigma2 = self._compute_recording_lags(r1, r2)
-        return self._get_dist_probability_fn(lag_time, sigma2)
+    def __init__(self, max_dist_m=10000*1000):
+        self._max_dist_m = max_dist_m
 
-    def probability_to_intensity(self, prob: npt.NDArray[np.float32]):
-        probmin = np.min(prob)
-        probmax = np.max(prob)
-        return 1.0 - (prob - probmin) / (probmax - probmin)
+    def get_dist_score_fn(self, r1: TDoARecording, r2: TDoARecording):
+        lag_time, score = self._compute_recording_lags(r1, r2)
+        return self._get_dist_score_fn(lag_time, score)
+
+    def score_to_intensity(self, score: npt.NDArray[np.float32]):
+        scoremin = np.min(score)
+        scoremax = np.max(score)
+        return (score - scoremin) / (scoremax - scoremin)
 
     @staticmethod
-    def _compute_lags(s1, s2, sr, max_dist_m=10000*1000):
+    def _compute_lags(s1, s2, sr, max_dist_m):
         # this is in essence similar to
         # https://github.com/hcab14/TDoA/blob/2bb9dc2ecc2c6ebcc13ed11c7cbeadea0cd5dfcd/m/tdoa_compute_lags_new.m#L20-L28
         # and ofc strongly inspired by that
@@ -104,42 +106,40 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         # normalize correlation
         corr = corr / np.max(np.abs(corr))
 
-        # probability magic? idfk lmfaosob, kiwisdr TDoA this
-        sigma2 = -2 * np.log(np.abs(corr))
+        score = np.log(np.abs(corr))
 
-        return lag_time, sigma2
+        return lag_time, score
 
-    @classmethod
-    def _compute_recording_lags(cls, r1, r2):
+    def _compute_recording_lags(self, r1, r2):
         start_offset = (r1.timestamps[0] - r2.timestamps[0]) / 1e9
-        lag_time, sigma2 = cls._compute_lags(
+        lag_time, score = self._compute_lags(
             r1.samples,
             r2.samples,
             np.mean([r1.sr, r2.sr]),
+            self._max_dist_m,
         )
         lag_time += start_offset
-        return lag_time, sigma2
+        return lag_time, score
 
     @staticmethod
-    def _get_dist_probability_fn(lag_time, sigma2):
+    def _get_dist_score_fn(lag_time, score):
         # convert seconds lag to distance in m
         lag_time *= scipy.constants.c
-        # function that will, given a distance in meters return the sigma2 at that point
-        probability_func = scipy.interpolate.interp1d(
+        # function that will, given a distance in meters return the score at that point
+        return scipy.interpolate.interp1d(
             lag_time,
-            sigma2,
+            score,
             bounds_error=False,
-            fill_value=np.max(sigma2), # TODO: maybe just inf?
+            fill_value=np.min(score),
         )
-        return probability_func
-        
+
 
 class TDoARun:
     def __init__(self, algorithm: TDoAAlgorithm, recs: list[TDoAPositionedRecording], p1, p2, res):
         self._algorithm = algorithm
         self._recs = recs
         self._rx_dist_fns = {}
-        self._latgr, self._longr, self._m = self._prepare_heatmap(p1, p2, res)
+        self._latgr, self._longr, self._score_template = self._prepare_heatmap(p1, p2, res)
 
         if len(self._recs) < 2:
             raise Exception(f"need at least two recordings for TDoA, got {len(self._recs)}")
@@ -158,30 +158,28 @@ class TDoARun:
 
         longr, latgr = np.meshgrid(lons, lats)
 
-        # TODO: find a good name for this
-        m = np.zeros_like(latgr, dtype=np.float32)
+        score = np.zeros_like(latgr, dtype=np.float32)
 
-        return latgr, longr, m
+        return latgr, longr, score
 
     def _compute_rec_dists(self):
         if self._rx_dist_fns:
             return
 
         for a, b in itertools.combinations(range(len(self._recs)), 2):
-            self._rx_dist_fns[(a, b)] = self._algorithm.get_dist_probability_fn(self._recs[a], self._recs[b])
+            self._rx_dist_fns[(a, b)] = self._algorithm.get_dist_score_fn(self._recs[a], self._recs[b])
 
     def _get_heatmap(self, recpairs: list[tuple[int, int]]):
-        m = np.copy(self._m)
+        score = np.copy(self._score_template)
         for (a, b) in recpairs:
-            sigma2 = self._rx_dist_fns[(a, b)]
             d1 = tools.haversine(self._latgr, self._longr, self._recs[a].lat, self._recs[a].lon)
             d2 = tools.haversine(self._latgr, self._longr, self._recs[b].lat, self._recs[b].lon)
 
             dist = d1 - d2
 
-            m += sigma2(dist)
+            score += self._rx_dist_fns[(a, b)](dist)
 
-        return self._algorithm.probability_to_intensity(m)
+        return self._algorithm.score_to_intensity(score)
 
     def get_pairs(self):
         self._compute_rec_dists()
