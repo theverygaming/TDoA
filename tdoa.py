@@ -200,3 +200,10 @@ class TDoARun:
 
     def get_grid(self):
         return self._latgr, self._longr
+
+    def get_max_res(self):
+        """
+        Returns the Maximum possible resolution in meters
+        """
+        sr = np.mean([r.sr for r in self._recs])
+        return (1 / sr) * scipy.constants.c
