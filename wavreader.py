@@ -4,12 +4,12 @@ from tdoa import TDoARecording
 
 
 def _read_chunk(data):
-    ctype = data[0:4]
+    ctype, lchunk = struct.unpack_from("<4sI", data)
     match ctype:
         case b"kiwi":
-            lchunk, gps_last, dummy, gpssec, gpsnsec = struct.unpack("<IBBII", data[4:18])
             if lchunk != 10:
                 raise Exception("invalid kiwi chunk length")
+            gps_last, dummy, gpssec, gpsnsec = struct.unpack_from("<BBII", data, offset=8)
             cdata = {
                 "chunk_type": "kiwi",
                 "fix_age": gps_last,
@@ -17,7 +17,6 @@ def _read_chunk(data):
                 "gpsnsec": gpsnsec,
             }
         case b"data":
-            lchunk, = struct.unpack("<I", data[4:8])
             data = data[8:8+lchunk]
             if len(data) != lchunk:
                 raise Exception("data chunk too short")
@@ -30,7 +29,7 @@ def _read_chunk(data):
     return (4 + 4 + lchunk, cdata)
 
 def read_kiwiwav(f):
-    data = f.read()
+    data = memoryview(f.read())
     if data[0:4] != b"RIFF":
         raise Exception("not a RIFF")
     fsize, = struct.unpack("<I", data[4:8])
