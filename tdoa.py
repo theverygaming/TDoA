@@ -177,9 +177,10 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
 
 
 class TDoARun:
-    def __init__(self, algorithm: TDoAAlgorithm, recs: list[TDoAPositionedRecording], p1, p2, res):
+    def __init__(self, algorithm: TDoAAlgorithm, recs: list[TDoAPositionedRecording], ref_rec_idx: None | int, p1, p2, res):
         self._algorithm = algorithm
         self._recs = recs
+        self._ref_rec_idx = ref_rec_idx
         self._rx_dist_fns = {}
         self._latgr, self._longr, self._score_template = self._prepare_heatmap(p1, p2, res)
 
@@ -211,8 +212,14 @@ class TDoARun:
         if self._rx_dist_fns:
             return
 
-        for a, b in itertools.combinations(range(len(self._recs)), 2):
-            self._rx_dist_fns[(a, b)] = self._algorithm.get_dist_score_fn(self._recs[a], self._recs[b])
+        if self._ref_rec_idx is not None:
+            for i in range(len(self._recs)):
+                if i == self._ref_rec_idx:
+                    continue
+                self._rx_dist_fns[(self._ref_rec_idx, i)] = self._algorithm.get_dist_score_fn(self._recs[self._ref_rec_idx], self._recs[i])
+        else:
+            for a, b in itertools.combinations(range(len(self._recs)), 2):
+                self._rx_dist_fns[(a, b)] = self._algorithm.get_dist_score_fn(self._recs[a], self._recs[b])
 
     def _get_heatmap(self, recpairs: list[tuple[int, int]]):
         score = np.copy(self._score_template)
