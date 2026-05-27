@@ -64,6 +64,16 @@ class TDoARecording:
         self.samples = self.samples[s_start:s_end]
         self.timestamps = self.timestamps[s_start:s_end]
 
+    def resample(self, up, down):
+        ratio = up / down
+        self.sr *= ratio
+
+        self.samples = scipy.signal.resample_poly(self.samples, up, down)
+        self.timestamps = np.interp(
+            np.arange(len(self.samples), dtype=np.int64),
+            np.arange(len(self.timestamps), dtype=np.int64),
+            self.timestamps,
+        )
 
 @dataclasses.dataclass
 class TDoAPositionedRecording(TDoARecording):
