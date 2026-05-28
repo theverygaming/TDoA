@@ -102,10 +102,7 @@ class TDoAPositionedRecording(TDoARecording):
 class TDoAAlgorithm:
     # TODO: docstrings?
 
-    def get_dist_score_fn(self, r1: TDoARecording, r2: TDoARecording):
-        raise NotImplementedError()
-
-    def score_to_intensity(self, score: npt.NDArray[np.float32]):
+    def get_dist_intensity_fn(self, r1: TDoARecording, r2: TDoARecording):
         raise NotImplementedError()
 
 
@@ -113,20 +110,15 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
     def __init__(self, max_dist_m=10000*1000):
         self._max_dist_m = max_dist_m
 
-    def get_dist_score_fn(self, r1: TDoARecording, r2: TDoARecording):
-        lag_time, score = self._compute_recording_lags(r1, r2)
+    def get_dist_intensity_fn(self, r1: TDoARecording, r2: TDoARecording):
+        lag_time, intensity = self._compute_recording_lags(r1, r2)
         def get_corr():
-            return lag_time, score
+            return lag_time, intensity
         # convert seconds lag to distance in m
         lag_dist = lag_time * scipy.constants.c
         # TODO: maybe do some magic to obtain a more accurate measurement even when the resulution is bad?
-        peak_dist = lag_dist[np.argmax(score)]
-        return self._get_dist_score_fn(lag_dist, score), get_corr, peak_dist
-
-    def score_to_intensity(self, score: npt.NDArray[np.float32]):
-        scoremin = np.min(score)
-        scoremax = np.max(score)
-        return (score - scoremin) / (scoremax - scoremin)
+        peak_dist = lag_dist[np.argmax(intensity)]
+        return self._get_dist_intensity_fn(lag_dist, intensity), get_corr, peak_dist
 
     @staticmethod
     def _compute_lags(s1, s2, sr, max_dist_m):
@@ -141,10 +133,17 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         # s1 = np.abs(s1)
         # s2 = np.abs(s2)
 
+        # remove any constant DC offsets
+        s1 -= np.mean(s1)
+        s2 -= np.mean(s2)
+
         corr = scipy.signal.correlate(s1, s2, mode="full")
 
         # lag indices
         lags = scipy.signal.correlation_lags(len(s1), len(s2), mode="full")
+
+        # normalize correlation
+        corr = corr / (np.sqrt(np.sum(np.abs(s1) ** 2) * np.sum(np.abs(s2) ** 2) + 1e-12))
 
         # Distance limit; This also makes things a tiny bit faster as we work with less data
         if max_dist_m is not None:
@@ -157,32 +156,29 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         # convert lags to seconds
         lag_time = lags / sr
 
-        # normalize correlation
-        corr = corr / np.max(np.abs(corr))
+        intensity = np.abs(corr)
 
-        score = np.log(np.abs(corr))
-
-        return lag_time, score
+        return lag_time, intensity
 
     def _compute_recording_lags(self, r1, r2):
         start_offset = (r1.timestamps[0] - r2.timestamps[0]) / 1e9
-        lag_time, score = self._compute_lags(
+        lag_time, intensity = self._compute_lags(
             r1.samples,
             r2.samples,
             np.mean([r1.sr, r2.sr]),
             self._max_dist_m,
         )
         lag_time += start_offset
-        return lag_time, score
+        return lag_time, intensity
 
     @staticmethod
-    def _get_dist_score_fn(lag_dist, score):
-        # function that will, given a distance in meters return the score at that point
+    def _get_dist_intensity_fn(lag_dist, intensity):
+        # function that will, given a distance in meters return the intensity at that point
         return scipy.interpolate.interp1d(
             lag_dist,
-            score,
+            intensity,
             bounds_error=False,
-            fill_value=np.min(score),
+            fill_value=np.min(intensity),
         )
 
 
@@ -192,7 +188,7 @@ class TDoARun:
         self._recs = recs
         self._ref_rec_idx = ref_rec_idx
         self._rx_dist_fns = {}
-        self._latgr, self._longr, self._score_template = self._prepare_heatmap(p1, p2, res)
+        self._latgr, self._longr, self._intensity_template = self._prepare_heatmap(p1, p2, res)
 
         if len(self._recs) < 2:
             raise Exception(f"need at least two recordings for TDoA, got {len(self._recs)}")
@@ -214,9 +210,9 @@ class TDoARun:
 
         longr, latgr = np.meshgrid(lons, lats)
 
-        score = np.zeros_like(latgr, dtype=np.float32)
+        intensity = np.zeros_like(latgr, dtype=np.float32)
 
-        return latgr, longr, score
+        return latgr, longr, intensity
 
     def _compute_rec_dists(self):
         if self._rx_dist_fns:
@@ -226,22 +222,22 @@ class TDoARun:
             for i in range(len(self._recs)):
                 if i == self._ref_rec_idx:
                     continue
-                self._rx_dist_fns[(self._ref_rec_idx, i)] = self._algorithm.get_dist_score_fn(self._recs[self._ref_rec_idx], self._recs[i])
+                self._rx_dist_fns[(self._ref_rec_idx, i)] = self._algorithm.get_dist_intensity_fn(self._recs[self._ref_rec_idx], self._recs[i])
         else:
             for a, b in itertools.combinations(range(len(self._recs)), 2):
-                self._rx_dist_fns[(a, b)] = self._algorithm.get_dist_score_fn(self._recs[a], self._recs[b])
+                self._rx_dist_fns[(a, b)] = self._algorithm.get_dist_intensity_fn(self._recs[a], self._recs[b])
 
     def _get_heatmap(self, recpairs: list[tuple[int, int]]):
-        score = np.copy(self._score_template)
+        intensity = np.copy(self._intensity_template)
         for (a, b) in recpairs:
             d1 = tools.haversine(self._latgr, self._longr, self._recs[a].lat, self._recs[a].lon)
             d2 = tools.haversine(self._latgr, self._longr, self._recs[b].lat, self._recs[b].lon)
 
             dist = d1 - d2
 
-            score += self._rx_dist_fns[(a, b)][0](dist)
+            intensity += self._rx_dist_fns[(a, b)][0](dist)
 
-        return self._algorithm.score_to_intensity(score)
+        return intensity
 
     def get_pairs(self):
         self._compute_rec_dists()
@@ -272,8 +268,8 @@ class TDoARun:
 
     def plot_correlation(self, fig, ax, rxid1, rxid2):
         self._compute_rec_dists()
-        lag_time, score = self._rx_dist_fns[(rxid1, rxid2)][1]()
-        intensity = self._algorithm.score_to_intensity(score)
+        lag_time, intensity = self._rx_dist_fns[(rxid1, rxid2)][1]()
         ax.plot(lag_time, intensity)
         ax.set_xlabel("Lag (Seconds)")
         ax.set_ylabel("Intensity")
+        ax.set_ylim([0, 1])
