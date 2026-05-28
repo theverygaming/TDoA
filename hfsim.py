@@ -105,7 +105,7 @@ def gen_fsk(f_carrier, shift, baudrate, fs, len_s):
         t,
         f_carrier,
         np.pad(
-            (md := mod_data(int(fs*(1/baudrate)), b"The quick brown fox jumps over the lazy dog :3" + bytes(np.zeros(5)), {0: -1, 1: -1})[:len(t)]),
+            (md := mod_data(int(fs*(1/baudrate)), b"The quick brown fox jumps over the lazy dog :3" + bytes(np.zeros(1)), {0: -1, 1: -1})[:len(t)]),
             (0, len(t) - len(md)),
             mode="wrap",
         ),
