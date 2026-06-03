@@ -16,7 +16,7 @@ class TDoARecording:
     sr: float # TODO: maybe compute this from timestamps and cache it?
 
     @staticmethod
-    def sync_recs(recs: list["TDoARecording"], time_diff_max_ns=2e9):
+    def sync_recs(recs: list["TDoARecording"], time_diff_max_ns=1e6):
         """
         Throws away all parts of the specified recordings that are not overlapping.
 
@@ -27,11 +27,11 @@ class TDoARecording:
         latest_start = max(rec.timestamps[0] for rec in recs)
         for i, rec in enumerate(recs):
             diff = np.absolute(rec.timestamps - latest_start)
-            start_idx = diff.argmin()
-            if diff[start_idx] > time_diff_max_ns:
-                raise Exception(f"recs start more than time_diff_max_ns ({time_diff_max_ns}) apart from each other")
-            recs[i].timestamps = rec.timestamps[start_idx:]
-            recs[i].samples = rec.samples[start_idx:]
+            min_idx = diff.argmin()
+            if diff[min_idx] > time_diff_max_ns:
+                raise Exception(f"recs are desynced by more than time_diff_max_ns ({time_diff_max_ns} ns) from each other ({diff[min_idx]} ns)")
+            recs[i].timestamps = rec.timestamps[min_idx:]
+            recs[i].samples = rec.samples[min_idx:]
 
         # ensure all recs have the same length
         smallest_len = min(len(rec.timestamps) for rec in recs)
