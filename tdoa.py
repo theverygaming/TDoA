@@ -26,10 +26,12 @@ class TDoARecording:
         # ensure all recs start at around the same time
         latest_start = max(rec.timestamps[0] for rec in recs)
 
+        sr_median = np.median([rec.sr for rec in recs])
+
         i = 0
         while i < len(recs):
-            if abs(12000 - recs[i].sr) > 100:
-                print(f"dropping recording {recs[i]} due to unusual SR {recs[i].sr}")
+            if abs(sr_median - recs[i].sr) > (sr_median / 100):
+                print(f"dropping recording {recs[i]} due to unusual SR {recs[i].sr} (median {sr_median})")
                 del recs[i]
                 continue
             t_end = recs[i].timestamps[-1]
