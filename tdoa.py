@@ -126,8 +126,32 @@ class TDoAAlgorithm:
 
 
 class TDoAAlgorithmSimple(TDoAAlgorithm):
-    def __init__(self, max_dist_m=10000*1000):
+    def __init__(self, max_dist_m=10000*1000, demod=None):
         self._max_dist_m = max_dist_m
+
+        match (demod.lower() if demod is not None else demod):
+            case "phase":
+                self._demod = lambda x, _: np.angle(x) / (2 * np.pi)
+            case "fm":
+                def demod_fm(sig, bandwidth, samplerate):
+                    # https://github.com/AlexandreRouma/SDRPlusPlus/blob/36ea9a143422f5b374371461667ff53fb9387300/core/src/dsp/demod/quadrature.h
+                    inv_deviation = 2 * np.pi * ((bandwidth / 2) / samplerate)
+                    phase = np.angle(sig) # np.angle is equal to np.arctan2(im, re)
+                    demod = np.diff(np.unwrap(phase) / inv_deviation)
+                    return np.pad(demod, (1, 0), mode="edge")
+                self._demod = lambda x, _: demod_fm(x, 1, 1)
+            case "am":
+                def demod_am(x, sr):
+                    # get magnitude and remove DC (AM demod)
+                    x1 = np.abs(x)
+                    sos = scipy.signal.butter(4, 0.1, "hp", fs=sr, output="sos")
+                    x1 = scipy.signal.sosfiltfilt(sos, x1)
+                    return x1
+                self._demod = demod_am
+            case None:
+                self._demod = lambda x, _: x
+            case _:
+                raise Exception(f"unknown demod '{demod}'")
 
     def get_dist_intensity_fn(self, r1: TDoARecording, r2: TDoARecording):
         lag_time, intensity = self._compute_recording_lags(r1, r2)
@@ -139,31 +163,14 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         peak_dist = lag_dist[np.argmax(intensity)]
         return self._get_dist_intensity_fn(lag_dist, intensity), get_corr, peak_dist
 
-    @staticmethod
-    def _compute_lags(s1, s2, sr, max_dist_m):
-        def demod_fm(sig, bandwidth, samplerate):
-            # https://github.com/AlexandreRouma/SDRPlusPlus/blob/36ea9a143422f5b374371461667ff53fb9387300/core/src/dsp/demod/quadrature.h
-            inv_deviation = 2 * np.pi * ((bandwidth / 2) / samplerate)
-            phase = np.angle(sig) # np.angle is equal to np.arctan2(im, re)
-            demod = np.diff(np.unwrap(phase) / inv_deviation)
-            return np.pad(demod, (1, 0), mode="edge")
-
+    def _compute_lags(self, s1, s2, sr, max_dist_m):
         # this is in essence similar to
         # https://github.com/hcab14/TDoA/blob/2bb9dc2ecc2c6ebcc13ed11c7cbeadea0cd5dfcd/m/tdoa_compute_lags_new.m#L20-L28
         # and ofc strongly inspired by that
 
-        # get phase
-        #s1 = np.angle(s1) / (2 * np.pi)
-        #s2 = np.angle(s2) / (2 * np.pi)
-        # get magnitude and remove DC (AM demod)
-        # s1 = np.abs(s1)
-        # s2 = np.abs(s2)
-        # sos = scipy.signal.butter(4, 0.1, "hp", fs=sr, output="sos")
-        # s1 = scipy.signal.sosfiltfilt(sos, s1)
-        # s2 = scipy.signal.sosfiltfilt(sos, s2)
-        # FM demod
-        # s1 = demod_fm(s1, 1, 1)
-        # s2 = demod_fm(s2, 1, 1)
+        # demodulate
+        s1 = self._demod(s1, sr)
+        s2 = self._demod(s2, sr)
 
         # remove any constant DC offsets
         s1 -= np.mean(s1)
@@ -203,8 +210,7 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         lag_time += start_offset
         return lag_time, intensity
 
-    @staticmethod
-    def _get_dist_intensity_fn(lag_dist, intensity):
+    def _get_dist_intensity_fn(self, lag_dist, intensity):
         # function that will, given a distance in meters return the intensity at that point
         return scipy.interpolate.interp1d(
             lag_dist,
