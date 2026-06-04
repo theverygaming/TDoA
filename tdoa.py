@@ -340,6 +340,21 @@ class TDoARun:
 
         intensity = self._get_heatmap(self._rx_dist_fns.keys())
 
+        # rate recordings
+        # TODO: move somewhere else maybe lol
+        rec_ratings = {}
+        for (a, b) in self._rx_dist_fns:
+            for x in [a, b]:
+                if x not in rec_ratings:
+                    rec_ratings[x] = []
+            rating = self._rx_dist_fns[(a, b)][3]
+            rec_ratings[a].append(rating)
+            rec_ratings[b].append(rating)
+        for k in rec_ratings:
+            rec_ratings[k] = np.mean(rec_ratings[k])
+        for name, rating in sorted([(self._recs[k].name, s) for k, s in rec_ratings.items()], key=lambda x: x[1], reverse=True):
+            print(f"rx '{name}' rating {rating}")
+
         return intensity
 
     def get_rec(self, recid):
