@@ -253,9 +253,12 @@ class TDoARun:
                 if i == self._ref_rec_idx:
                     continue
                 self._rx_dist_fns[(self._ref_rec_idx, i)] = self._algorithm.get_dist_intensity_fn(self._recs[self._ref_rec_idx], self._recs[i])
+                print(f"computed corr for {i+1}/{len(self._recs)}")
         else:
-            for a, b in itertools.combinations(range(len(self._recs)), 2):
+            combos = list(itertools.combinations(range(len(self._recs)), 2))
+            for i, (a, b) in enumerate(combos):
                 self._rx_dist_fns[(a, b)] = self._algorithm.get_dist_intensity_fn(self._recs[a], self._recs[b])
+                print(f"computed corr for {i+1}/{len(combos)}")
 
     def _get_heatmap(self, recpairs: list[tuple[int, int]]):
         intensity = np.copy(self._intensity_template)
