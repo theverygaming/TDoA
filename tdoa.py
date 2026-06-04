@@ -244,6 +244,7 @@ class TDoARun:
         self._recs = recs
         self._ref_rec_idx = ref_rec_idx
         self._rx_dist_fns = {}
+        self._heatmap_cache = {}
 
         if len(self._recs) < 2:
             raise Exception(f"need at least two recordings for TDoA, got {len(self._recs)}")
@@ -304,15 +305,26 @@ class TDoARun:
 
     def _get_heatmap(self, recpairs: list[tuple[int, int]]):
         intensity = np.copy(self._intensity_template)
-        for (a, b) in recpairs:
-            d1 = tools.haversine(self._latgr, self._longr, self._recs[a].lat, self._recs[a].lon)
-            d2 = tools.haversine(self._latgr, self._longr, self._recs[b].lat, self._recs[b].lon)
+        pair_intensities = []
+        for i, (a, b) in enumerate(recpairs):
+            if (a, b) not in self._heatmap_cache:
+                d1 = tools.haversine(self._latgr, self._longr, self._recs[a].lat, self._recs[a].lon)
+                d2 = tools.haversine(self._latgr, self._longr, self._recs[b].lat, self._recs[b].lon)
 
-            dist = d1 - d2
+                dist = d1 - d2
 
-            intensity += self._rx_dist_fns[(a, b)][0](dist)
+                self._heatmap_cache[(a, b)] = self._rx_dist_fns[(a, b)][0](dist)
+                print(f"cached heatmap {i+1}/{len(recpairs)}")
 
-        intensity /= len(recpairs)
+            pair_intensities.append((self._rx_dist_fns[(a, b)][3], self._heatmap_cache[(a, b)], f"{self._recs[a].name} - {self._recs[b].name}"))
+
+        # pair_intensities.sort(key=lambda x: x[0], reverse=True)
+        # pair_intensities = pair_intensities[:200]
+
+        for rating, it, name in pair_intensities:
+            intensity += it
+
+        intensity /= len(pair_intensities)
 
         return intensity
 
