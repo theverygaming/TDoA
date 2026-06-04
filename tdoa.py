@@ -25,6 +25,21 @@ class TDoARecording:
 
         # ensure all recs start at around the same time
         latest_start = max(rec.timestamps[0] for rec in recs)
+
+        i = 0
+        while i < len(recs):
+            if abs(12000 - recs[i].sr) > 100:
+                print(f"dropping recording {recs[i]} due to unusual SR {recs[i].sr}")
+                del recs[i]
+                continue
+            t_end = recs[i].timestamps[-1]
+            if t_end < latest_start:
+                print(f"dropping recording {recs[i]} due to end before lastest_start")
+                del recs[i]
+                continue
+                #raise Exception(f"rec ({rec}) ends before latest_start")
+            i += 1
+
         for i, rec in enumerate(recs):
             diff = np.absolute(rec.timestamps - latest_start)
             min_idx = diff.argmin()
