@@ -109,8 +109,8 @@ def read_kiwiwav(f):
 
     # compute timestamps for each sample
     for chunk in chunks_raw:
-        samp_dt_ns = chunk["duration_ns"] / len(chunk["data"])
-        chunk["timestamps"] = chunk["gpsns"] + (np.arange(chunk_len, dtype=np.int64) * samp_dt_ns)
+        samp_dt_ns = int(chunk["duration_ns"] / len(chunk["data"]))
+        chunk["timestamps"] = int(chunk["gpsns"]) + (np.arange(chunk_len, dtype=np.int64) * samp_dt_ns)
 
     samples_all = np.concatenate([x["data"] for x in chunks_raw])
     timestamps_all = np.concatenate([x["timestamps"] for x in chunks_raw])
