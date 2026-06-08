@@ -74,7 +74,7 @@ def read_kiwiwav(f):
         if chunk["gpsns"] == 0 and i != 0:
             raise Exception(f"{f}: zero timestamp after start")
         if gpsns_prev > 0:
-            if chunk["gpsns"] < gpsns_prev:
+            if chunk["gpsns"] <= gpsns_prev:
                 raise Exception(f"{f}: clock went backwards or didn't run current: {chunk['gpsns']} prev: {gpsns_prev}")
             dt_ns = chunk["gpsns"] - gpsns_prev
             dt_ns_chunks.append(dt_ns)
