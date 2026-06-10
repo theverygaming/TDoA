@@ -215,6 +215,13 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         # https://github.com/hcab14/TDoA/blob/2bb9dc2ecc2c6ebcc13ed11c7cbeadea0cd5dfcd/m/tdoa_compute_lags_new.m#L20-L28
         # and ofc strongly inspired by that
 
+        # import matplotlib.pyplot as plt
+        # plt.figure(figsize=(12, 4))
+        # t = np.arange(len(s2)) / sr
+        # plt.plot(t, s2)
+        # plt.xlabel("Time (Seconds)")
+        # plt.ylabel("Voltage A")
+
         # demodulate
         s1 = self._demod(s1, sr)
         s2 = self._demod(s2, sr)
@@ -222,6 +229,13 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         # remove any constant DC offsets
         s1 -= np.mean(s1)
         s2 -= np.mean(s2)
+
+        # plt.figure(figsize=(12, 4))
+        # t = np.arange(len(s2)) / sr
+        # plt.plot(t, s2)
+        # plt.xlabel("Time (Seconds)")
+        # plt.ylabel("Voltage B")
+        # plt.show()
 
         corr = scipy.signal.correlate(s1, s2, mode="full")
 
