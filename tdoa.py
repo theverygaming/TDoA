@@ -120,10 +120,10 @@ class TDoARecording:
             # fill in gap with zeros if needed
             dt = rec.timestamps[0] - ts_last_end
             if dt < 0:
-                raise Exception(f"stitch: recordings overlap")
+                raise Exception(f"stitch: recordings overlap (current: {rec})")
             space_samples = int(round(dt / sample_dt_ns))
             if space_samples == 0:
-                raise Exception(f"stitch: there is less than one sample of spacing betwen this and the previous recording dt: {dt} sample_dt_ns: {sample_dt_ns}")
+                raise Exception(f"stitch: there is less than one sample of spacing betwen this and the previous recording dt: {dt} sample_dt_ns: {sample_dt_ns} (current: {rec})")
             if space_samples > 1:
                 space_samples -= 1
                 if noise:
