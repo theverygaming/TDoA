@@ -4,6 +4,7 @@ import re
 import itertools
 import json
 import io
+import traceback
 import base64
 import numpy as np
 import scipy
@@ -26,8 +27,12 @@ def prepare_recs(recs: list[tdoa.TDoAPositionedRecording]):
             recs.append(v[0])
             continue
         print(f"stitching {len(v)} recordings for '{k}'")
-        recs.append(tdoa.TDoAPositionedRecording.stitch(v))
-    
+        try:
+            recs.append(tdoa.TDoAPositionedRecording.stitch(v))
+        except Exception:
+            print(f"error stitching recodings from '{k}', ignoring")
+            print(traceback.format_exc())
+
     tdoa.TDoARecording.sync_recs(recs)
 
     return recs
@@ -38,7 +43,11 @@ def _recs_from_files(files: list[str], locs: dict[str, tuple[float, float]]):
     for fname in files:
         with open(fname, "rb") as f:
             m = re.search(r"\d{4}\d{2}\d{2}T\d{2}\d{2}\d{2}Z_\d+_([^_]+)_iq", fname)
-            recordings.append(tdoa.TDoAPositionedRecording.from_recording(kiwiwavreader.read_kiwiwav(f), *locs[fname], name=m.group(1) if m is not None else None))
+            try:
+                recordings.append(tdoa.TDoAPositionedRecording.from_recording(kiwiwavreader.read_kiwiwav(f), *locs[fname], name=m.group(1) if m is not None else None))
+            except Exception:
+                print(f"error reading recording {fname}, ignoring")
+                print(traceback.format_exc())
     return recordings
 
 def _recs_from_kiwirecorder_dir(dir: str, wavs: list[str] | None = None):
