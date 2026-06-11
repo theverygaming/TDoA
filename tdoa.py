@@ -42,15 +42,21 @@ class TDoARecording:
                 #raise Exception(f"rec ({rec}) ends before latest_start")
             i += 1
 
-        for i, rec in enumerate(recs):
-            diff = np.absolute(rec.timestamps - latest_start)
+        i = 0
+        while i < len(recs):
+            diff = np.absolute(recs[i].timestamps - latest_start)
             min_idx = diff.argmin()
             if diff[min_idx] > time_diff_max_ns:
-                raise Exception(f"recs ({rec}) are desynced by more than time_diff_max_ns ({time_diff_max_ns} ns) from each other ({diff[min_idx]} ns)")
+                errmsg = f"recs ({recs[i]}) are desynced by more than time_diff_max_ns ({time_diff_max_ns} ns) from each other ({diff[min_idx]} ns)"
+                # raise Exception(errmsg)
+                print(f"{errmsg}, skipping {recs[i]}")
+                del recs[i]
+                continue
             if diff[min_idx] > time_diff_warn_ns:
                 print(f"WARNING: sync_recs: diff {diff[min_idx]} ns ({((diff[min_idx] / 1e9) * scipy.constants.c) / 1000} km)")
-            recs[i].timestamps = rec.timestamps[min_idx:]
-            recs[i].samples = rec.samples[min_idx:]
+            recs[i].timestamps = recs[i].timestamps[min_idx:]
+            recs[i].samples = recs[i].samples[min_idx:]
+            i += 1
 
         # ensure all recs have the same length
         smallest_len = min(len(rec.timestamps) for rec in recs)
