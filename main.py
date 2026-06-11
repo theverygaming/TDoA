@@ -67,7 +67,8 @@ def _recs_from_kiwirecorder_dir(dir: str, wavs: list[str] | None = None):
     for fname in wavs:
         m = re.match(r"\d{4}\d{2}\d{2}T\d{2}\d{2}\d{2}Z_\d+_([^_]+)_iq", fname)
         fp = str(pathlib.Path(dir) / fname)
-        locs[fp] = rxmap[m.group(1)]
+        name = re.sub(r"-", "_", m.group(1))
+        locs[fp] = rxmap[name]
         files.append(fp)
 
     return _recs_from_files(files, locs)
