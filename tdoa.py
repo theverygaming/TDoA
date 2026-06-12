@@ -1,5 +1,6 @@
 import dataclasses
 import itertools
+from typing import Self
 import numpy as np
 import numpy.typing as npt
 import scipy
@@ -8,12 +9,44 @@ import tools
 
 @dataclasses.dataclass
 class TDoARecording:
-    # IQ samples
-    samples: npt.NDArray[np.complex64]
+    # IQ or real samples
+    samples: npt.NDArray[np.complex64] | npt.NDArray[np.float32]
     # nanosecond timestamps for each sample in samples
     timestamps: npt.NDArray[np.int64]
     # sample rate
     sr: float # TODO: maybe compute this from timestamps and cache it?
+
+    def demod(self, demod: str) -> Self:
+        match demod.lower():
+            case "phase":
+                samples = np.angle(self.samples) / (2 * np.pi)
+            case "fm":
+                def demod_fm(sig, bandwidth, samplerate):
+                    # https://github.com/AlexandreRouma/SDRPlusPlus/blob/36ea9a143422f5b374371461667ff53fb9387300/core/src/dsp/demod/quadrature.h
+                    inv_deviation = 2 * np.pi * ((bandwidth / 2) / samplerate)
+                    phase = np.angle(sig) # np.angle is equal to np.arctan2(im, re)
+                    demod = np.diff(np.unwrap(phase) / inv_deviation)
+                    return np.pad(demod, (1, 0), mode="edge")
+                samples = demod_fm(self.samples, 1, 1)
+            case "am":
+                # get magnitude and remove DC (AM demod)
+                samples = np.abs(self.samples)
+                sos = scipy.signal.butter(4, 0.1, "hp", fs=self.sr, output="sos")
+                samples = scipy.signal.sosfiltfilt(sos, samples)
+            case _:
+                raise Exception(f"unknown demod '{demod}'")
+
+        return self.__class__(
+            samples=samples,
+            **{k: v for k, v in dataclasses.asdict(self).items() if k not in ["samples"]},
+        )
+
+    def remove_dc(self) -> Self:
+        return self.__class__(
+            samples=self.samples - np.mean(self.samples),
+            **{k: v for k, v in dataclasses.asdict(self).items() if k not in ["samples"]},
+        )
+
 
     @staticmethod
     def sync_recs(recs: list["TDoARecording"], time_diff_max_ns=1e6, time_diff_warn_ns=1e5):
@@ -179,32 +212,8 @@ class TDoAAlgorithm:
 
 
 class TDoAAlgorithmSimple(TDoAAlgorithm):
-    def __init__(self, max_dist_m=10000*1000, demod=None):
+    def __init__(self, max_dist_m=10000*1000):
         self._max_dist_m = max_dist_m
-
-        match (demod.lower() if demod is not None else demod):
-            case "phase":
-                self._demod = lambda x, _: np.angle(x) / (2 * np.pi)
-            case "fm":
-                def demod_fm(sig, bandwidth, samplerate):
-                    # https://github.com/AlexandreRouma/SDRPlusPlus/blob/36ea9a143422f5b374371461667ff53fb9387300/core/src/dsp/demod/quadrature.h
-                    inv_deviation = 2 * np.pi * ((bandwidth / 2) / samplerate)
-                    phase = np.angle(sig) # np.angle is equal to np.arctan2(im, re)
-                    demod = np.diff(np.unwrap(phase) / inv_deviation)
-                    return np.pad(demod, (1, 0), mode="edge")
-                self._demod = lambda x, _: demod_fm(x, 1, 1)
-            case "am":
-                def demod_am(x, sr):
-                    # get magnitude and remove DC (AM demod)
-                    x1 = np.abs(x)
-                    sos = scipy.signal.butter(4, 0.1, "hp", fs=sr, output="sos")
-                    x1 = scipy.signal.sosfiltfilt(sos, x1)
-                    return x1
-                self._demod = demod_am
-            case None:
-                self._demod = lambda x, _: x
-            case _:
-                raise Exception(f"unknown demod '{demod}'")
 
     def get_dist_intensity_fn(self, r1: TDoARecording, r2: TDoARecording):
         lag_time, intensity = self._compute_recording_lags(r1, r2)
@@ -220,28 +229,6 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
         # this is in essence similar to
         # https://github.com/hcab14/TDoA/blob/2bb9dc2ecc2c6ebcc13ed11c7cbeadea0cd5dfcd/m/tdoa_compute_lags_new.m#L20-L28
         # and ofc strongly inspired by that
-
-        # import matplotlib.pyplot as plt
-        # plt.figure(figsize=(12, 4))
-        # t = np.arange(len(s2)) / sr
-        # plt.plot(t, s2)
-        # plt.xlabel("Time (Seconds)")
-        # plt.ylabel("Voltage A")
-
-        # demodulate
-        s1 = self._demod(s1, sr)
-        s2 = self._demod(s2, sr)
-
-        # remove any constant DC offsets
-        s1 -= np.mean(s1)
-        s2 -= np.mean(s2)
-
-        # plt.figure(figsize=(12, 4))
-        # t = np.arange(len(s2)) / sr
-        # plt.plot(t, s2)
-        # plt.xlabel("Time (Seconds)")
-        # plt.ylabel("Voltage B")
-        # plt.show()
 
         corr = scipy.signal.correlate(s1, s2, mode="full")
 
@@ -306,9 +293,9 @@ class TDoAAlgorithmSimple(TDoAAlgorithm):
 
 
 class TDoARun:
-    def __init__(self, algorithm: TDoAAlgorithm, recs: list[TDoAPositionedRecording], ref_rec_idx: None | int, p1, p2):
+    def __init__(self, algorithm: TDoAAlgorithm, recs: list[TDoAPositionedRecording], ref_rec_idx: None | int, p1, p2, demod = None):
         self._algorithm = algorithm
-        self._recs = recs
+        self._recs = [r.remove_dc() for r in ([r.demod(demod) for r in recs] if demod is not None else recs)]
         self._ref_rec_idx = ref_rec_idx
         self._rx_dist_fns = {}
         self._heatmap_cache = {}

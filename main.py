@@ -124,7 +124,7 @@ def run_tdoa(
         plt.savefig(f"out/{r.name} spec.png")
         plt.close()
 
-    tdoa_algo = tdoa.TDoAAlgorithmSimple(demod=demod)
+    tdoa_algo = tdoa.TDoAAlgorithmSimple()
 
     intensity_split = None
     if split_secs is not None:
@@ -133,7 +133,7 @@ def run_tdoa(
         recordings_split = [list(x) for x in zip(*[r.split(split_secs) for r in recordings])]
         for i, recs in enumerate(recordings_split):
             print(f"split running {i+1}/{len(recordings_split)}")
-            tdoa_run = tdoa.TDoARun(tdoa_algo, recs, None, p1, p2)
+            tdoa_run = tdoa.TDoARun(tdoa_algo, recs, None, p1, p2, demod=demod)
             if intensity_split is not None:
                 intensity_split += tdoa_run.get_all()
             else:
@@ -141,7 +141,7 @@ def run_tdoa(
         intensity_split /= len(recordings_split)
 
     print("running TDoA")
-    tdoa_run = tdoa.TDoARun(tdoa_algo, recordings, None, p1, p2)
+    tdoa_run = tdoa.TDoARun(tdoa_algo, recordings, None, p1, p2, demod=demod)
     print(f"max TDoA resolution: {tdoa_run.get_max_res()}m")
     latgr, longr = tdoa_run.get_grid()
     intensity = tdoa_run.get_all()
