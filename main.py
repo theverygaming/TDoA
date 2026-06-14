@@ -181,7 +181,7 @@ def run_tdoa(
 
 if __name__ == "__main__":
     if len(sys.argv) != 10:
-        print(f"usage: {sys.argv[0]} <lat top left> <lon top left> <lat bottom right> <lon bottom right> <demod type: none (complex correlation), phase, fm or am)> <split seconds or 0 for no split> <virtual height of ionosphere (or 0 for no ionosphere correction)> <minimum takeoff angle for prop model (or 0)> <kiwirecorder dir>")
+        print(f"usage: {sys.argv[0]} <lat top left> <lon top left> <lat bottom right> <lon bottom right> <demod type: none (complex correlation), phase, fm or am)> <split seconds or 0 for no split> <virtual height of ionosphere in kilometers (or 0 for no ionosphere correction)> <minimum takeoff angle for prop model in degrees (or 0)> <kiwirecorder dir>")
         exit(1)
     p1 = (float(sys.argv[1]), float(sys.argv[2]))
     p2 = (float(sys.argv[3]), float(sys.argv[4]))
