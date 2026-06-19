@@ -1,3 +1,4 @@
+import argparse
 import sys
 import pathlib
 import re
@@ -216,16 +217,25 @@ def run_tdoa(
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 10:
-        print(f"usage: {sys.argv[0]} <lat top left> <lon top left> <lat bottom right> <lon bottom right> <demod type: none (complex correlation), phase, fm or am)> <split seconds or 0 for no split> <virtual height of ionosphere in kilometers (or 0 for no ionosphere correction)> <minimum takeoff angle for prop model in degrees (or 0)> <kiwirecorder dir>")
-        exit(1)
-    p1 = (float(sys.argv[1]), float(sys.argv[2]))
-    p2 = (float(sys.argv[3]), float(sys.argv[4]))
-    demod = sys.argv[5] if sys.argv[5].lower() != "none" else None
-    split_secs = int(sys.argv[6]) if int(sys.argv[6]) != 0 else None
-    propmodel_vh = float(sys.argv[7]) if float(sys.argv[7]) != 0 else None
-    propmodel_min_angle = float(sys.argv[8])
-    kiwirecorder_dir = sys.argv[9]
+    parser = argparse.ArgumentParser(
+        description="TDoA program",
+    )
+    parser.add_argument("--p1", help="top left map boundary (format: lat,lon e.g. 42.1, -123.4)", type=str, required=True)
+    parser.add_argument("--p2", help="bottom right map boundary (format: lat,lon e.g. 32.1, -87.65)", type=str, required=True)
+    parser.add_argument("--input", "-i", help="input kiwirecorder directory", type=str, required=True)
+    parser.add_argument("--demod", help="demodulate signal before correlation (default: disabled (complex correlation))", choices=["phase", "fm", "am"])
+    parser.add_argument("--split", help="split run into segments of N seconds", type=int)
+    parser.add_argument("--iono-height", help="virtual height of ionosphere in kilometers", type=float)
+    parser.add_argument("--iono-takeoff", help="minimum takeoff angle for prop model in degrees (default: 0)", type=float, default=0.0)
+    parsed_args = parser.parse_args()
+
+    p1 = (float((split := parsed_args.p1.split(","))[0]), float(split[1]))
+    p2 = (float((split := parsed_args.p2.split(","))[0]), float(split[1]))
+    demod = parsed_args.demod
+    split_secs = parsed_args.split
+    propmodel_vh = parsed_args.iono_height
+    propmodel_min_angle = parsed_args.iono_takeoff
+    kiwirecorder_dir = parsed_args.input
 
     recordings = _recs_from_kiwirecorder_dir(kiwirecorder_dir)
     recordings = prepare_recs(recordings)
