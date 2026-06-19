@@ -6,7 +6,7 @@ This is a small Python program to compute [TDoA](https://en.wikipedia.org/wiki/T
 
 ## How do I use this?
 
-Before running this you may want to install python 3, numpy, scipy and matplotlib.
+Before running this you may want to install python 3, numpy, scipy and matplotlib. Optionally you may install [cartopy](https://cartopy.readthedocs.io/stable/index.html) for nicer maps.
 
 At the time of writing there's a script `main.py` that will simply spit out it's usage when ran as is. It takes a few parameters, a path to a [kiwirecorder](https://github.com/jks-prv/kiwiclient) directory and will output plots into a directory named `out` (which you should create before running it).
 

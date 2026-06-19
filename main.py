@@ -9,11 +9,20 @@ import base64
 import numpy as np
 import scipy
 import matplotlib.pyplot as plt
+
+try:
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    HAS_CARTOPY = True
+except ImportError:
+    HAS_CARTOPY = False
+
 import kiwiwavreader
 import tools
 import tdoa
 import hfsim
 import ionomodel
+
 
 def prepare_recs(recs: list[tdoa.TDoAPositionedRecording]):
     recs_stitch = {}
@@ -78,18 +87,31 @@ def _plot_tdoa_heatmap(out, latgr, longr, intensity, title, markers, mark_max=Tr
     # TODO: maybe support OSM output? https://wiki.openstreetmap.org/wiki/Heat_maps
 
     plt.figure(figsize=(16, 12))
-    plt.contourf(longr, latgr, intensity, levels=50, cmap="viridis")
-    plt.xlim(np.min(longr), np.max(longr))
-    plt.ylim(np.min(latgr), np.max(latgr))
+    if HAS_CARTOPY:
+        ax = plt.axes(projection=ccrs.PlateCarree())
+        img = ax.contourf(longr, latgr, intensity, levels=50, cmap="viridis", transform=ccrs.PlateCarree())
+
+        ax.set_aspect("auto")
+        gl = ax.gridlines(draw_labels=True, dms=False, x_inline=False, y_inline=False)
+        gl.top_labels = False
+        gl.right_labels = False
+
+        ax.add_feature(cfeature.BORDERS, linestyle="-", edgecolor="white", linewidth=1)
+        ax.add_feature(cfeature.COASTLINE, edgecolor="white", linewidth=1)
+    else:
+        ax = plt.gca()
+        img = ax.contourf(longr, latgr, intensity, levels=50, cmap="viridis")
+    ax.set_xlim(np.min(longr), np.max(longr))
+    ax.set_ylim(np.min(latgr), np.max(latgr))
     plt.title(title)
-    plt.xlabel("Latitude")
-    plt.ylabel("Longitude")
-    plt.colorbar(label="Probability")
+    ax.set_xlabel("Latitude")
+    ax.set_ylabel("Longitude")
+    plt.colorbar(img, ax=ax, label="Probability")
 
     def mark(lat, lon, color, label, label_on_map):
-        plt.scatter(lon, lat, c=color, label=label)
+        ax.scatter(lon, lat, c=color, label=label)
         if label_on_map:
-            plt.annotate(label_on_map, (lon, lat), ha="center", c="white")
+            ax.annotate(label_on_map, (lon, lat), ha="center", c="white")
 
     if mark_max:
         max_idx = np.unravel_index(np.argmax(intensity), intensity.shape)
@@ -100,7 +122,7 @@ def _plot_tdoa_heatmap(out, latgr, longr, intensity, title, markers, mark_max=Tr
     for mname, ((mlat, mlon), mcolor) in markers.items():
         mark(mlat, mlon, mcolor, mname, mname)
 
-    plt.legend()
+    ax.legend()
 
     plt.savefig(f"{out}{title}.png")
     plt.close()
