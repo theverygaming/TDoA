@@ -10,7 +10,9 @@ Before running this you may want to install python 3, numpy, scipy and matplotli
 
 At the time of writing there's a script `main.py` that will simply spit out it's usage when ran as is. It takes a few parameters, a path to a [kiwirecorder](https://github.com/jks-prv/kiwiclient) directory and will output plots into a directory named `out` (which you should create before running it).
 
-Example kiwirecorder usage:
+<details>
+<summary>Example kiwirecorder usage</summary>
+
 ```sh
 $ python3 kiwirecorder.py --kiwi-wav -d your_output_directory -s kiwisdrA.ddns.net,kiwisdrB.com,kiwisdrC.net -p 8073,8075,8073 --station kiwiA,kiwiB,kiwiC -L-5000 -H 5000 -f 4321 -m iq
 ```
@@ -20,3 +22,5 @@ $ python3 kiwirecorder.py --kiwi-wav -d your_output_directory -s kiwisdrA.ddns.n
 - `-L-5000 -H 5000` specifies the passband in Hz, in this case 5kHz below and above the carrier frequency. The passband should ideally match the bandwidth of the signal of interest closely.
 
 for further help consult the [KiwiClient documentation on timestamped output](https://github.com/jks-prv/kiwiclient#iq-wav-files-with-gnss-timestamps) and `kiwirecorder.py --help`
+
+</details>
