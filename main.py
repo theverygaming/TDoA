@@ -108,27 +108,43 @@ def calc_nrows(ncols, nitems):
     nrows = math.ceil(nitems / ncols)
     return nrows
 
-def _run_tdoa_heatmap_plot(intensities, ncols, use_cartopy):
+def _run_tdoa_heatmap_plot(latgr, longr, intensities, ncols, use_cartopy):
+    lat_min, lat_max = np.min(latgr), np.max(latgr)
+    lon_min, lon_max = np.min(longr), np.max(longr)
+    heatmap_aspect_ratio = (abs(lon_max - lon_min) / abs(lat_max - lat_min)) if abs(lat_max - lat_min) > 0 else 1
+    base_hmplot_dim = 4
+    if heatmap_aspect_ratio >= 1:
+        # wide
+        hmplot_width = base_hmplot_dim * heatmap_aspect_ratio
+        hmplot_height = base_hmplot_dim
+    else:
+        # tall
+        hmplot_width = base_hmplot_dim
+        hmplot_height = base_hmplot_dim / heatmap_aspect_ratio
+
     if len(intensities) == 1:
         ncols = 1
     nrows = calc_nrows(ncols, len(intensities))
-    if HAS_CARTOPY and use_cartopy:
-        fig, axs = plt.subplots(ncols=ncols, nrows=nrows, squeeze=False, subplot_kw={"projection": ccrs.PlateCarree()})
-    else:
-        fig, axs = plt.subplots(ncols=ncols, nrows=nrows, squeeze=False)
-    
+    fig, axs = plt.subplots(ncols=ncols,
+        nrows=nrows,
+        squeeze=False,
+        layout="tight",
+        figsize=(
+            (hmplot_width * ncols) + (1.3 * ncols),
+            hmplot_height * nrows
+        ),
+        subplot_kw={"projection": ccrs.PlateCarree()} if HAS_CARTOPY and use_cartopy else None,
+    )
+
     if len(intensities) % 2 == 1:
         axs.flat[-1].set_axis_off()
 
-    fig.set_figwidth(12)
-    fig.set_figheight(6 * nrows)
-
-    for i, (latgr, longr, intensity, title, markers, mark_max) in enumerate(intensities):
+    for i, (intensity, title, markers, mark_max) in enumerate(intensities):
         ax = axs.flat[i]
         if HAS_CARTOPY and use_cartopy:
             img = ax.contourf(longr, latgr, intensity, levels=50, cmap="viridis", transform=ccrs.PlateCarree())
 
-            ax.set_aspect("equal")
+            ax.set_aspect("equal", adjustable="box")
             gl = ax.gridlines(draw_labels=True, dms=False, x_inline=False, y_inline=False)
             gl.top_labels = False
             gl.right_labels = False
@@ -136,7 +152,7 @@ def _run_tdoa_heatmap_plot(intensities, ncols, use_cartopy):
             ax.add_feature(cfeature.BORDERS, linestyle="-", edgecolor="white", linewidth=1)
             ax.add_feature(cfeature.COASTLINE, edgecolor="white", linewidth=1)
         else:
-            ax.set_aspect("equal")
+            ax.set_aspect("equal", adjustable="box")
             img = ax.contourf(longr, latgr, intensity, levels=50, cmap="viridis")
         ax.set_xlim(np.min(longr), np.max(longr))
         ax.set_ylim(np.min(latgr), np.max(latgr))
@@ -145,14 +161,14 @@ def _run_tdoa_heatmap_plot(intensities, ncols, use_cartopy):
         ax.set_ylabel("Longitude")
         fig.colorbar(
             img,
-            cax=ax.inset_axes([1.05, 0, 0.05, 1.0]),
+            cax=ax.inset_axes([1.04, 0.0, 0.05, 1.0]),
             label="Probability",
         )
 
         def mark(lat, lon, color, label, label_on_map):
             ax.scatter(lon, lat, c=color, label=label)
             if label_on_map:
-                ax.annotate(label_on_map, (lon, lat), ha="center", c="white")
+                ax.annotate(label_on_map, (lon, lat), ha="center", c="white", clip_on=True)
 
         if mark_max:
             max_idx = np.unravel_index(np.argmax(intensity), intensity.shape)
@@ -161,7 +177,7 @@ def _run_tdoa_heatmap_plot(intensities, ncols, use_cartopy):
             mark(latgr[max_idx], longr[max_idx], "red", "max", f"{latgr[max_idx]:.4f}, {longr[max_idx]:.4f}")
 
         for mname, ((mlat, mlon), mcolor) in markers.items():
-            mark(mlat, mlon, mcolor, mname, mname)
+            mark(mlat, mlon, mcolor, mname, mname if not mname.startswith("_") else mname[1:])
 
         ax.legend()
 
@@ -228,20 +244,19 @@ def run_tdoa(
         intensity_corrected = None
 
     def gen_rec_markers(recs):
-        return {rec.name if rec.name is not None else "unknown": ((rec.lat, rec.lon), "blue") for rec in recs}
+        return {"_" + rec.name if rec.name is not None else "unknown": ((rec.lat, rec.lon), "blue") for rec in recs}
 
     heatmaps = []
 
-    heatmaps.append((latgr, longr, intensity, "TDoA", markers | gen_rec_markers(recordings), True))
+    heatmaps.append((intensity, "TDoA", markers | gen_rec_markers(recordings), True))
     if propmodel is not None:
-        heatmaps.append((latgr, longr, intensity_corrected, "TDoA (corrected)", markers | gen_rec_markers(recordings), True))
+        heatmaps.append((intensity_corrected, "TDoA (corrected)", markers | gen_rec_markers(recordings), True))
     if intensity_split is not None:
-        heatmaps.append((latgr, longr, intensity_split, "TDoA (split)", markers | gen_rec_markers(recordings), True))
+        heatmaps.append((intensity_split, "TDoA (split)", markers | gen_rec_markers(recordings), True))
         if propmodel is not None:
-            heatmaps.append((latgr, longr, intensity_split_corrected, "TDoA (split, corrected)", markers | gen_rec_markers(recordings), True))
+            heatmaps.append((intensity_split_corrected, "TDoA (split, corrected)", markers | gen_rec_markers(recordings), True))
 
-    _run_tdoa_heatmap_plot(heatmaps, 1, True)
-    plt.tight_layout()
+    _run_tdoa_heatmap_plot(latgr, longr, heatmaps, 1, True)
     plt.savefig(f"out/TDoA heatmaps.pdf")
     plt.close()
 
@@ -258,7 +273,7 @@ def run_tdoa(
             for i, ((r1id, r2id), intensity) in enumerate(intensities_chunk):
                 rec1 = tdoa_run.get_rec(r1id)
                 rec2 = tdoa_run.get_rec(r2id)
-                heatmaps.append((latgr, longr, intensity, f"TDoA {rec1.name} - {rec2.name}", markers | gen_rec_markers([rec1, rec2]), False))
+                heatmaps.append((intensity, f"TDoA {rec1.name} - {rec2.name}", markers | gen_rec_markers([rec1, rec2]), False))
 
                 axs.flat[i].set_title(f"Correlation {rec1.name} - {rec2.name}")
                 tdoa_run.plot_correlation(fig, axs.flat[i], r1id, r2id)
@@ -268,8 +283,7 @@ def run_tdoa(
 
     with matplotlib.backends.backend_pdf.PdfPages("out/TDoA correlation heatmaps.pdf") as pdf:
         for heatmaps_chunk in tools.iter_chunks(heatmaps, 4):
-            _run_tdoa_heatmap_plot(heatmaps_chunk, 2, True)
-            plt.tight_layout()
+            _run_tdoa_heatmap_plot(latgr, longr, heatmaps_chunk, 2, True)
             pdf.savefig()
             plt.close()
 
