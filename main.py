@@ -197,16 +197,18 @@ def run_tdoa(
 
     ncols = 2
     with matplotlib.backends.backend_pdf.PdfPages("out/TDoA spectrograms.pdf") as pdf:
-        for rec_chunk in tools.iter_chunks(recordings, 4):
+        nchunk = 4
+        for i, rec_chunk in enumerate(tools.iter_chunks(recordings, nchunk)):
+            print(f"plotting spectrograms: {i * nchunk}/{len(recordings)}")
             nrows = calc_nrows(ncols, len(rec_chunk))
             fig, axs = plt.subplots(ncols=ncols, nrows=nrows)
             if len(rec_chunk) % 2 == 1:
                 axs.flat[-1].set_axis_off()
             fig.set_figwidth(16)
             fig.set_figheight(5 * nrows)
-            for i, r in enumerate(rec_chunk):
-                axs.flat[i].set_title(f"Spectrogram {r.name}")
-                r.plot_spectrogram(fig, axs.flat[i])
+            for j, r in enumerate(rec_chunk):
+                axs.flat[j].set_title(f"Spectrogram {r.name}")
+                r.plot_spectrogram(fig, axs.flat[j])
             plt.tight_layout()
             pdf.savefig()
             plt.close()
@@ -256,13 +258,17 @@ def run_tdoa(
         if propmodel is not None:
             heatmaps.append((intensity_split_corrected, "TDoA (split, corrected)", markers | gen_rec_markers(recordings), True))
 
+    print("plotting heatmaps...")
     _run_tdoa_heatmap_plot(latgr, longr, heatmaps, 1, True)
     plt.savefig(f"out/TDoA heatmaps.pdf")
     plt.close()
+    print("done plotting heatmaps")
 
     heatmaps = []
     with matplotlib.backends.backend_pdf.PdfPages("out/TDoA correlations.pdf") as pdf:
-        for intensities_chunk in tools.iter_chunks(intensities.items(), 4):
+        nchunk = 4
+        for i, intensities_chunk in enumerate(tools.iter_chunks(intensities.items(), nchunk)):
+            print(f"plotting correlations: {i * nchunk}/{len(intensities)}")
             ncols = 2
             nrows = calc_nrows(ncols, len(intensities_chunk))
             fig, axs = plt.subplots(ncols=ncols, nrows=nrows)
@@ -270,19 +276,21 @@ def run_tdoa(
                 axs.flat[-1].set_axis_off()
             fig.set_figwidth(12)
             fig.set_figheight(4 * nrows)
-            for i, ((r1id, r2id), intensity) in enumerate(intensities_chunk):
+            for j, ((r1id, r2id), intensity) in enumerate(intensities_chunk):
                 rec1 = tdoa_run.get_rec(r1id)
                 rec2 = tdoa_run.get_rec(r2id)
                 heatmaps.append((intensity, f"TDoA {rec1.name} - {rec2.name}", markers | gen_rec_markers([rec1, rec2]), False))
 
-                axs.flat[i].set_title(f"Correlation {rec1.name} - {rec2.name}")
-                tdoa_run.plot_correlation(fig, axs.flat[i], r1id, r2id)
+                axs.flat[j].set_title(f"Correlation {rec1.name} - {rec2.name}")
+                tdoa_run.plot_correlation(fig, axs.flat[j], r1id, r2id)
             plt.tight_layout()
             pdf.savefig()
             plt.close()
 
     with matplotlib.backends.backend_pdf.PdfPages("out/TDoA correlation heatmaps.pdf") as pdf:
-        for heatmaps_chunk in tools.iter_chunks(heatmaps, 4):
+        nchunk = 4
+        for i, heatmaps_chunk in enumerate(tools.iter_chunks(heatmaps, nchunk)):
+            print(f"plotting correlation heatmaps: {i * nchunk}/{len(heatmaps)}")
             _run_tdoa_heatmap_plot(latgr, longr, heatmaps_chunk, 2, True)
             pdf.savefig()
             plt.close()
