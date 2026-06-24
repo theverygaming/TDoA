@@ -112,7 +112,7 @@ def _run_tdoa_heatmap_plot(latgr, longr, intensities, ncols, use_cartopy):
     lat_min, lat_max = np.min(latgr), np.max(latgr)
     lon_min, lon_max = np.min(longr), np.max(longr)
     heatmap_aspect_ratio = (abs(lon_max - lon_min) / abs(lat_max - lat_min)) if abs(lat_max - lat_min) > 0 else 1
-    base_hmplot_dim = 4
+    base_hmplot_dim = 10
     if heatmap_aspect_ratio >= 1:
         # wide
         hmplot_width = base_hmplot_dim * heatmap_aspect_ratio
